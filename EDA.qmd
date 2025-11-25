@@ -1,0 +1,9 @@
+---
+title: "EDA"
+format: html
+editor: visual
+---
+
+This page will contain my exploratory data analysis for the ST 558 final project.
+
+\[Click here for the modeling page\] (Modeling.html)
