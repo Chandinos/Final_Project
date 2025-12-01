@@ -13,8 +13,6 @@ library(janitor)
 #Load Data (using relative pathway)
 diabetes <- read_csv("data/diabetes_binary_health_indicators_BRFSS2015.csv") |>
   clean_names()
-
-set.seed(987)
 ```
 
 # Introduction

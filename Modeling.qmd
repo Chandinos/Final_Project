@@ -4,4 +4,99 @@ format: html
 editor: visual
 ---
 
-This page will contain model fitting, tuning, and final model selection for the ST 558 final project.
+# Introduction
+
+The goal of this analysis is to fit and tune classifiers that predict diabetes status using the survey data. The dataset originates from a large public health survey program, the Behavioral Risk Factor Surveillance System, collected and published by the Centers for Disease Control and Prevention. Since predictors are mixed-type and may relate to diabetes in non-linear ways, we compare two popular tree-based classifiers: a single classification tree model and a random forest, both fit using modeling workflows from the tidymodels package ecosystem. Models are tuned using log-loss so predictions that confidently assign the correct class are rewarded and over-confident wrong predictions are penalized.
+
+```{r}
+#| message: false
+#| warning: false
+
+library(tidyverse)
+library(tidymodels)
+library(janitor)
+
+set.seed(987)
+```
+
+# Data Split
+
+After loading, we split the data into 70% training and 30% testing to evaluate generalization performance. A seed ensures reproducibility across models.
+```{r}
+#| message: false
+#| warning: false
+
+#Split Data
+diab_split <- initial_split(diabetes, prop = 0.7, strata = diabetes_binary)
+train_data <- training(diab_split)
+test_data <- testing(diab_split)
+```
+
+# Classification Tree
+
+A classification tree splits data into regions using predictor values to separate diabetes groups. We tune the cost complexity parameter to balance tree size and generalization, since our EDA showed skew and imbalance that could lead to overfitting without pruning.
+```{r}
+#| message: false
+#| warning: false
+
+#Specifying classification tree model
+tree_spec <- decision_tree(
+  cost_complexity = tune(),
+  min_n = 20
+) |>
+  set_mode("classification") |>
+  set_engine("rpart")
+
+#Workflow (6 predictors)
+tree_wf <- workflow() |>
+  add_model(tree_spec) |>
+  add_formula(
+    diabetes_binary ~ bmi + age + high_bp + 
+      high_chol + phys_activity + smoker
+  )
+
+#5-fold cross-validation (on training set)
+tree_folds <- vfold_cv(train_data, v=5, strata = diabetes_binary)
+
+#Tuning grid (for cost complexity)
+tree_grid <- grid_regular(
+  cost_complexity(),
+  levels = 10
+)
+
+#Tuning the tree using log-loss
+tree_tune <- tune_grid(
+  tree_wf,
+  resamples = tree_folds,
+  grid = tree_grid,
+  metrics = metric_set(mn_log_loss),
+  control = control_grid(save_pred = TRUE)
+)
+
+#Looking at performance 
+tree_metrics <- collect_metrics(tree_tune)
+tree_metrics
+
+#Selecting lowest log-loss and finalizing work flow
+best_tree <- select_best(tree_tune, metric = "mn_log_loss")
+best_tree
+
+final_tree_wf <- finalize_workflow(tree_wf, best_tree)
+
+#Fit final tree on training data 
+tree_final_fit <- last_fit(final_tree_wf, diab_split)
+
+#Test-set performance
+tree_final_fit |> collect_metrics()
+
+#Compute log-loss on test set for the final tree
+tree_logloss <- tree_final_fit |>
+  collect_predictions() |>
+  mn_log_loss(truth = diabetes_binary,
+              .pred_Yes,
+              event_level = "second")
+
+tree_logloss
+```
+Test log-loss matches training (≈ 0.35), so the pruned tree generalized well without obvious overfit. We keep this as our best single-tree model and move to random forest tuning.
+
