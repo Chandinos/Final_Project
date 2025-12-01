@@ -4,6 +4,264 @@ format: html
 editor: visual
 ---
 
-This page will contain my exploratory data analysis for the ST 558 final project.
+```{r}
+#| label: setup
+#| include: false
+library(tidyverse)
+library(janitor)
 
-\[Click here for the modeling page\] (Modeling.html)
+#Load Data (using relative pathway)
+diabetes <- read_csv("data/diabetes_binary_health_indicators_BRFSS2015.csv") |>
+  clean_names()
+
+set.seed(987)
+```
+
+# Introduction
+
+The purpose of this exploratory data analysis (EDA) is to develop an understanding of the Diabetes Health Indicators BRFSS 2015 dataset. This dataset contains a variety of demographic, behavioral, and clinical health variables collected through the Behavioral Risk Factor Surveillance System.
+
+After completing the EDA, the next step will be to build models that predict whether a person has diabetes using the variables in this dataset. Our goal is to compare different modeling approaches to see which one predicts the binary diabetes indicator (0 = No, 1 = Yes) most accurately. Because the predictors include a mix of demographic, behavioral, and clinical information, we will test models that can handle different types of data and look for patterns that might help improve prediction performance.
+
+# Data Overview
+
+```{r}
+#Basic structure and first few rows of the dataset
+head(diabetes)
+glimpse(diabetes)
+```
+
+The Diabetes Health Indicators BRFSS 2015 dataset contains a large collection of health-related variables gathered from adult survey respondents. Each row represents an individual, and each column corresponds to a specific health, demographic, or behavioral indicator.
+
+This dataset includes:
+ + **diabetes_binary** variable whether an individual has diabetes or not (our goal is to predict this variable) 
+ + **Behavioral factors** such as smoking status and physical activity.
+ + **Demographic variables** such as sex and age category.
+ + **Clinical indicators** such as BMI, high cholesterol, and high blood pressure.
+
+The dataset includes different types of variables—numbers, yes/no indicators, and ordered categories—so it’s important to understand what each one looks like before modeling. The following sections explore these variables, how they are distributed, and how they connect to diabetes.
+
+# Variable Type Conversion and Missingness Check
+
+Because the dataset contains a mixture of binary health indicators, ordinal survey responses, and continuous measurements, we first convert key variables into appropriate factor types with interpretable labels. This step ensures that later summaries and models treat these variables correctly (for example, not treating 0/1 indicators as continuous). We also quantify missing values to confirm that the dataset is sufficiently complete for modeling.
+
+```{r}
+#| message: false 
+#| warning: false
+
+#Convert 0/1 indicators and coded categories to factors with labels
+diabetes <- diabetes |> 
+  mutate( 
+    diabetes_binary = factor(diabetes_binary,
+                             levels = c(0,1),
+                             labels = c("No", "Yes")),
+    #Binary indicators
+    high_bp = factor(high_bp, levels = c(0, 1), labels = c("No", "Yes")),
+    high_chol = factor(high_chol, levels = c(0, 1), labels = c("No", "Yes")),
+    chol_check = factor(chol_check, levels = c(0, 1), labels = c("No", "Yes")),
+    smoker = factor(smoker, levels = c(0, 1), labels = c("No", "Yes")),
+    stroke = factor(stroke, levels = c(0, 1), labels = c("No", "Yes")),
+    heart_diseaseor_attack = factor(heart_diseaseor_attack, levels = c(0, 1), labels = c("No", "Yes")),
+    phys_activity = factor(phys_activity, levels = c(0, 1), labels = c("No", "Yes")),
+    fruits = factor(fruits, levels = c(0, 1), labels = c("No", "Yes")),
+    veggies = factor(veggies, levels = c(0, 1), labels = c("No", "Yes")),
+    hvy_alcohol_consump = factor(hvy_alcohol_consump, levels = c(0, 1), labels = c("No", "Yes")),
+    any_healthcare = factor(any_healthcare, levels = c(0, 1), labels = c("No", "Yes")),
+    no_docbc_cost = factor(no_docbc_cost, levels = c(0, 1), labels = c("No", "Yes")),
+    diff_walk = factor(diff_walk, levels = c(0, 1), labels = c("No", "Yes")),
+    sex = factor(sex, levels = c(0, 1), labels = c("Female", "Male")),
+    
+    #Ordinal health status (self-reported)
+    gen_hlth = factor(
+      gen_hlth,
+      levels = 1:5,
+      labels = c("Excellent", "Very good", "Good", "Fair", "Poor"), 
+      ordered = TRUE
+    ),
+    
+    #Ordinal age (BRFSS coding)
+    age = factor(
+      age,
+      levels = 1:13,
+      labels = c(
+        "18–24", "25–29", "30–34", "35–39",
+        "40–44", "45–49", "50–54", "55–59",
+        "60–64", "65–69", "70–74", "75–79", "80+"),
+      ordered = TRUE
+    ),
+    
+    #Ordinal education
+    education = factor(
+      education,
+      levels = 1:6, 
+      labels = c( "No school/kindergarten", "Grades 1–8", "Grades 9–11", 
+                  "High school/GED", "Some college", "College grad" ), 
+      ordered = TRUE 
+      ),
+    
+    #Ordinal income
+    income = factor( 
+      income, 
+      levels = 1:8, 
+      labels = c( "<$10k", "$10–15k", "$15–20k", "$20–25k", 
+                  "$25–35k", "$35–50k", "$50–75k", ">$75k" ), 
+      ordered = TRUE 
+      )
+  )
+
+#Summarize missingness
+missing_summary <- diabetes |>
+  summarize(across(everything(), ~sum(is.na(.)))) |>
+  pivot_longer(everything(), 
+               names_to = "variable",
+               values_to = "n_missing") |>
+  mutate(pct_missing = n_missing / nrow(diabetes)) |>
+  arrange(desc(n_missing))
+
+missing_summary
+```
+The missingness summary indicates that most variables have very few (or no) missing values, so we proceed without additional imputation at the EDA stage.
+
+# Distributional Summaries
+
+To prepare for visual inspection and modeling, we summarize continuous and categorical variables separately, focusing on central tendency, spread, and level frequencies.
+```{r}
+#| message: false 
+#| warning: false
+
+#Categorical summaries for key factors
+cat_summary <- diabetes |>
+  select(diabetes_binary, high_bp, high_chol, smoker,
+          phys_activity, sex, age, gen_hlth, education, income) |>
+  mutate(across(everything(), ~as.factor(as.character(.)))) |>
+  pivot_longer(cols = everything(),
+               names_to = "variable",
+               values_to = "level") |>
+  count(variable, level, name = "n") |>
+  group_by(variable) |>
+  mutate(pct = n / sum(n)) |>
+  ungroup()
+
+cat_summary
+
+#Numeric Summaries
+num_summary <- diabetes |>
+  select(where(is.numeric)) |>
+  pivot_longer(cols = everything(),
+               names_to = "variable",
+               values_to = "value") |>
+  group_by(variable) |>
+  summarise(
+    mean = mean(value, na.rm = TRUE),
+    sd = sd(value, na.rm = TRUE),
+    min = min(value, na.rm = TRUE),
+    q25 = quantile(value, 0.25, na.rm = TRUE),
+    med = median(value, na.rm = TRUE),
+    q75 = quantile(value, 0.75, na.rm = TRUE),
+    max = max(value, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+num_summary
+```
+Continuous predictors such as BMI, mental health days, and physical health days show right-skewed distributions, with medians equal to 0 for both health measures, indicating many respondents report no unhealthy days despite higher means. BMI ranges from 12 to 98, with a median of 27 and mean near 28.4, suggesting moderate skew and some extreme values.
+Age group frequencies confirm smaller representation in young adult ranges (18–39), and heavier concentration in middle and older adult ranges (50–74), which later supports exploring non-linear modeling methods that handle skew and mixed data types without transformation.
+
+# Categorical Variable Balance
+
+Many of the predictors in this dataset are binary or ordered categorical variables, such as blood pressure status, general health, age group, and income. Before modeling, it is useful to look at how responses are distributed across levels to see which categories are common, which are rare, and whether there is any serious imbalance that might affect how models learn from these predictors.
+```{r}
+#| message: false
+#| warning: false
+
+#Faceted bar plots for key variables 
+diabetes |>
+  select(diabetes_binary, high_bp, high_chol, smoker,
+         phys_activity, sex) |>
+  mutate(across(everything(), as.character)) |>
+  pivot_longer(cols = everything(),
+               names_to = "variable",
+               values_to = "level") |>
+  ggplot(aes(x = level)) +
+  geom_bar() +
+  facet_wrap(~ variable, scales = "free_x") +
+  labs(x = NULL, y = "Count",
+       title = "Categorical variable level counts")
+
+#Individual Bar Plots for remaining variables (to ensure clean visuals)
+#Age
+diabetes |> 
+  ggplot(aes(x = age)) +
+  geom_bar() +
+  labs(x = "Age Category", y = "Count",
+       title = "Age Level Counts")
+
+#Education
+diabetes |>
+  ggplot(aes(x = education)) +
+  geom_bar() +
+  labs(x = "Education Level", y = "Count",
+       title = "Education Level Counts")
+
+#General Health
+diabetes |>
+ggplot(aes(x = gen_hlth)) +
+  geom_bar() +
+  labs(x = "General Health", y = "Count",
+       title = "General Health Level Counts")
+
+#Income Level 
+diabetes |>
+  ggplot(aes(x = income)) +
+  geom_bar() +
+  labs(x = "Income Bracket", y = "Count",
+       title = "Income Level Counts")
+```
+In short, the categorical predictors are clean and usable. The binary flags are balanced, while the ordinal categories are skewed toward older and higher-income respondents with some sparse levels. This supports evaluating flexible, non-linear models later.
+
+# Bivariate Relationships with Diabetes Status
+
+To understand how individual predictors differ across diabetes status, we compare key categorical variables using cross-tabulated proportions, and examine numeric measures by outcome group to check for differences in central tendency and distributional overlap.
+```{r}
+#| message: false
+#| warning: false
+
+diabetes_by_binary <- diabetes |>
+  select(diabetes_binary, high_bp, high_chol, smoker, phys_activity) |>
+  pivot_longer(cols = -diabetes_binary,
+               names_to = "predictor",
+               values_to = "response") |>
+  group_by(predictor, diabetes_binary, response) |>
+  summarise(n = n(), .groups = "drop_last") |>
+  group_by(predictor, diabetes_binary) |>
+  mutate(pct = round(n / sum(n), 4)) |>
+  ungroup()
+
+diabetes_by_binary
+```
+The bivariate analysis shows strong separation for clinical flags, especially high blood pressure (75% in diabetics vs. 38% in non-diabetics) and high cholesterol (67% vs. 38%). Physical activity trends suggest lower activity among diabetics (63% vs. 78%), indicating potential predictive value for inactivity. Smoking differences are smaller (52% vs. 43%) but both levels are well represented, so smoking may still help models that capture interactions.
+
+# Correlation Analysis for Numeric Measures
+
+For numeric predictors, we briefly inspect correlations with diabetes status and among predictors to detect strong linear signals and possible multicollinearity.
+```{r}
+#| message: false
+#| warning: false
+
+#Encoding diabetes_binary as 0/1 to test for correlation
+diabetes_encode <- diabetes |> mutate(diab = as.numeric(diabetes_binary == "Yes"))
+
+#Correlation with diabetes and numeric predictors
+diabetes_corr <- diabetes_encode |>
+  select(diab, bmi, ment_hlth, phys_hlth) |>
+  cor(use = "pairwise.complete.obs") |>
+  as_tibble(rownames = "variable")
+
+diabetes_corr
+```
+BMI has the strongest linear association with diabetes (r = 0.217), suggesting higher BMI is more common among diabetics. Physical health days show a small signal (r = 0.171), while mental health alone is weak (r = 0.693). Correlation between health variables is moderate (r = 0.354) but not redundant, so we retain all features for modeling.
+
+# Key EDA Insights for Modeling
+
+
+EDA shows that diabetes has moderate numeric association with BMI and strong separation across clinical binaries like high BP and cholesterol. Many ordinal variables (age, education, income, and general health) are skewed toward higher levels but remain usable and complete enough to retain for modeling. Smoking and physical activity show smaller but well-represented differences, so they may still add value in interaction-aware or tree-based learners. Overall, the BRFSS survey data is clean and modeling-ready, motivating comparisons between interpretable linear models from Tidymodels workflows and flexible tree or forest approaches built using engines like rpart and ranger.
