@@ -42,7 +42,6 @@ rf_fit_full <- fit(rf_wf, data = diabetes)
 num_means <- diabetes |>
   summarise(
     bmi_mean = mean(bmi, na.rm = TRUE),
-    age_mean = mean(age, na.rm = TRUE)
   ) |>
   as.list()
 
@@ -54,10 +53,11 @@ mode_fun <- function(x) {
 
 # Defaults for categorical predictors
 cat_defaults <- list(
-  high_bp_mode       = mode_fun(diabetes$high_bp),
-  high_chol_mode     = mode_fun(diabetes$high_chol),
+  age_mode = mode_fun(diabetes$age),
+  high_bp_mode = mode_fun(diabetes$high_bp),
+  high_chol_mode = mode_fun(diabetes$high_chol),
   phys_activity_mode = mode_fun(diabetes$phys_activity),
-  smoker_mode        = mode_fun(diabetes$smoker)
+  smoker_mode = mode_fun(diabetes$smoker)
 )
 
 # ------------------------------------------------------------
@@ -73,6 +73,10 @@ cat_defaults <- list(
 # Prediction Endpoint
 # ------------------------------------------------------------
 #* Predict diabetes status
+#* @description Valid inputs for `age` are:
+#* "18–24", "25–29", "30–34", "35–39",
+#* "40–44", "45–49", "50–54", "55–59",
+#* "60–64", "65–69", "70–74", "75–79", "80+"
 #* @param bmi Body mass index 
 #* @param age Age in years 
 #* @param high_bp High blood pressure 
@@ -83,7 +87,7 @@ cat_defaults <- list(
 
 function(
     bmi = num_means$bmi_mean,
-    age = num_means$age_mean,
+    age = cat_defaults$age_mode,
     high_bp = cat_defaults$high_bp_mode,
     high_chol = cat_defaults$high_chol_mode,
     phys_activity = cat_defaults$phys_activity_mode,
@@ -93,7 +97,9 @@ function(
   # Build 1-row input table
   api_data <- tibble(
     bmi = as.numeric(bmi),
-    age = as.numeric(age),
+    age = factor(age,
+                 levels = levels(diabetes$age),
+                 ordered = is.ordered(diabetes$age)),
     high_bp = factor(high_bp, levels = levels(diabetes$high_bp)),
     high_chol = factor(high_chol, levels = levels(diabetes$high_chol)),
     phys_activity = factor(phys_activity, levels = levels(diabetes$phys_activity)),
@@ -110,13 +116,24 @@ function(
     prob_No  = predict_prob$.pred_No,
     prob_Yes = predict_prob$.pred_Yes
   )
+}
+# Example calls (run after starting Plumber locally)
 
-# Example calls
 ## library(httr)
+
+## 1) Call with all default values:
 ## GET("http://127.0.0.1:8000/pred")
-## GET("http://127.0.0.1:8000/pred", query = list(bmi = 28, age = 56))
-## GET("http://127.0.0.1:8000/pred", 
-##  query = list(bmi = 28, age = 47, high_bp = "No", high_chol = "Yes", 
-##    phys_activity = "Yes", smoker = "No"))
+
+## 2) Call while overriding BMI and age group only:
+## GET("http://127.0.0.1:8000/pred", query = list(bmi = 28, age = "50–54"))
+
+## 3) Call while specifying all predictor values:
+## GET("http://127.0.0.1:8000/pred", query = list(
+##     bmi = 26,
+##     age = "40–44",
+##     high_bp = "No",
+##     high_chol = "Yes",
+##     phys_activity = "Yes",
+##     smoker = "No"
 # ------------------------------------------------------------
 
