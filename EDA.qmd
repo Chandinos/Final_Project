@@ -265,3 +265,6 @@ BMI has the strongest linear association with diabetes (r = 0.217), suggesting h
 # Key EDA Insights for Modeling
 
 EDA shows that diabetes has moderate numeric association with BMI and strong separation across clinical binaries like high BP and cholesterol. Many ordinal variables (age, education, income, and general health) are skewed toward higher levels but remain usable and complete enough to retain for modeling. Smoking and physical activity show smaller but well-represented differences, so they may still add value in interaction-aware or tree-based learners. Overall, the BRFSS survey data is clean and modeling-ready, motivating comparisons between interpretable linear models from Tidymodels workflows and flexible tree or forest approaches built using engines like rpart and ranger.
+
+# Modeling Page Link
+[Click here for the Modeling page](Modeling.html)
