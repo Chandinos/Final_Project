@@ -17,6 +17,9 @@ library(tidymodels)
 library(janitor)
 
 set.seed(987)
+
+#Read in cleaned data from EDA
+diabetes <- read_rds("data/diabetes_clean.rds")
 ```
 
 # Data Split
@@ -100,3 +103,98 @@ tree_logloss
 ```
 Test log-loss matches training (≈ 0.35), so the pruned tree generalized well without obvious overfit. We keep this as our best single-tree model and move to random forest tuning.
 
+# Random Forest
+
+A random forest extends the idea of a single classification tree by fitting many trees on bootstrap samples of the training data and averaging their predictions. At each split, a random subset of predictors is considered, which decorrelates the trees and reduces variance relative to a single tree. This makes random forests less interpretable but typically more accurate and stable. Here, we tune the mtry parameter, which controls how many predictors are available at each split, using 5-fold cross-validation and log-loss on the training data.
+```{r}
+#| message: false
+#| warning: false
+
+#Specifying Random Forest Model
+rf_spec <- rand_forest(
+  mtry  = tune(),
+  trees = 100,
+  min_n = 20
+) |>
+  set_mode("classification") |>
+  set_engine("ranger", importance = "impurity")
+
+#Workflow (same 6 predictors as Classification Tree)
+rf_wf <- workflow() |>
+  add_model(rf_spec) |>
+  add_formula(
+    diabetes_binary ~ bmi + age + high_bp +
+      high_chol + phys_activity + smoker
+  )
+
+#5-fold cross-validation (on training set)
+rf_folds <- vfold_cv(train_data, v = 5, strata = diabetes_binary)
+
+#Tuning grid for mtry
+rf_grid <- tibble(mtry = 2:6)
+
+#Tuning random forest using log-loss
+rf_tune <- tune_grid(
+  rf_wf,
+  resamples = rf_folds,
+  grid = rf_grid,
+  metrics = metric_set(mn_log_loss),
+  control = control_grid(save_pred = TRUE)
+)
+
+#Look at performance (mtry values)
+rf_metrics <- collect_metrics(rf_tune)
+rf_metrics
+
+#Selecting lowest log-loss (best mtry) and finalize workflow
+rf_best <- select_best(rf_tune, metric = "mn_log_loss")
+rf_best
+
+rf_final_wf <- finalize_workflow(rf_wf, rf_best)
+
+#Fit final random forest on training/test split
+rf_final_fit <- last_fit(rf_final_wf, diab_split)
+
+#Test-set performance
+rf_final_fit |> collect_metrics()
+
+#Compute log-loss on test set for the final random forest
+rf_logloss <- rf_final_fit |>
+  collect_predictions() |>
+  mn_log_loss(truth = diabetes_binary,
+              .pred_Yes,
+              event_level = "second")
+
+rf_logloss
+```
+
+# Final Model Selection
+We compare our best pruned classification tree and tuned random forest, selecting the strongest test-set performer as our final mode.
+```{r}
+#Collect the test-set metrics into objects
+tree_test_metrics <- tree_final_fit |> collect_metrics()
+rf_test_metrics   <- rf_final_fit   |> collect_metrics()
+
+#Extract test-set log-loss values too
+tree_log <- tree_final_fit |> collect_predictions() |> mn_log_loss(diabetes_binary, .pred_Yes, event_level = "second")
+rf_log   <- rf_final_fit   |> collect_predictions() |> mn_log_loss(diabetes_binary, .pred_Yes, event_level = "second")
+
+#Putting metrics into a single table
+compare <- bind_rows(
+  tree_test_metrics |> mutate(model = "Classification Tree"),
+  rf_test_metrics   |> mutate(model = "Random Forest")
+) |>
+  select(model, .metric, .estimate)
+
+#Adding log-loss (not part of default `collect_metrics()` output)
+compare <- bind_rows(
+  compare,
+  tibble(model = "Classification Tree", .metric = "mn_log_loss", .estimate = tree_log$.estimate),
+  tibble(model = "Random Forest",       .metric = "mn_log_loss", .estimate = rf_log$.estimate)
+)
+
+compare
+
+compare |> knitr::kable(digits = 3)
+```
+The Random Forest model is selected as the overall winner due to superior ROC AUC and lower log-loss with comparable accuracy.

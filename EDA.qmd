@@ -117,6 +117,9 @@ missing_summary <- diabetes |>
   arrange(desc(n_missing))
 
 missing_summary
+
+#Saving cleaned data set
+write_rds(diabetes, "data/diabetes_clean.rds")
 ```
 The missingness summary indicates that most variables have very few (or no) missing values, so we proceed without additional imputation at the EDA stage.
 
@@ -260,6 +263,5 @@ diabetes_corr
 BMI has the strongest linear association with diabetes (r = 0.217), suggesting higher BMI is more common among diabetics. Physical health days show a small signal (r = 0.171), while mental health alone is weak (r = 0.693). Correlation between health variables is moderate (r = 0.354) but not redundant, so we retain all features for modeling.
 
 # Key EDA Insights for Modeling
-
 
 EDA shows that diabetes has moderate numeric association with BMI and strong separation across clinical binaries like high BP and cholesterol. Many ordinal variables (age, education, income, and general health) are skewed toward higher levels but remain usable and complete enough to retain for modeling. Smoking and physical activity show smaller but well-represented differences, so they may still add value in interaction-aware or tree-based learners. Overall, the BRFSS survey data is clean and modeling-ready, motivating comparisons between interpretable linear models from Tidymodels workflows and flexible tree or forest approaches built using engines like rpart and ranger.
