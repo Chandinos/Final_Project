@@ -13,15 +13,15 @@ library(ggplot2)
 set.seed(987)
 
 # ------------------------------------------------------------
-# Read cleaned data (from EDA)
+# Load cleaned data (from EDA)
 # ------------------------------------------------------------
 diabetes <- readr::read_rds("data/diabetes_clean.rds")
 
 # ------------------------------------------------------------
-# Specify and fit the final Random Forest model on FULL data
+# Fit final RF model to full dataset
 # ------------------------------------------------------------
 rf_spec <- rand_forest(
-  mtry  = 2,      # from tuning
+  mtry  = 2,     
   trees = 100,
   min_n = 20
 ) |>
@@ -36,7 +36,7 @@ rf_wf <- workflow() |>
 rf_fit_full <- fit(rf_wf, data = diabetes)
 
 # ------------------------------------------------------------
-# Compute default values for `/pred` endpoint inputs
+# Get default predictor values
 # ------------------------------------------------------------
 # Means for numeric predictors
 num_means <- diabetes |>
@@ -63,3 +63,60 @@ cat_defaults <- list(
 # ------------------------------------------------------------
 # End of Setup Section
 # ------------------------------------------------------------
+
+# ------------------------------------------------------------
+# API title 
+# ------------------------------------------------------------
+#* @apiTitle Diabetes Random Forest API
+
+# ------------------------------------------------------------
+# Prediction Endpoint
+# ------------------------------------------------------------
+#* Predict diabetes status
+#* @param bmi Body mass index 
+#* @param age Age in years 
+#* @param high_bp High blood pressure 
+#* @param high_chol High cholesterol 
+#* @param phys_activity Physical activity 
+#* @param smoker Smoker status 
+#* @get /pred
+
+function(
+    bmi = num_means$bmi_mean,
+    age = num_means$age_mean,
+    high_bp = cat_defaults$high_bp_mode,
+    high_chol = cat_defaults$high_chol_mode,
+    phys_activity = cat_defaults$phys_activity_mode,
+    smoker = cat_defaults$smoker_mode
+) {
+  
+  # Build 1-row input table
+  api_data <- tibble(
+    bmi = as.numeric(bmi),
+    age = as.numeric(age),
+    high_bp = factor(high_bp, levels = levels(diabetes$high_bp)),
+    high_chol = factor(high_chol, levels = levels(diabetes$high_chol)),
+    phys_activity = factor(phys_activity, levels = levels(diabetes$phys_activity)),
+    smoker = factor(smoker, levels = levels(diabetes$smoker))
+  )
+  
+  # Run predictions on that input row
+  predict_class <- predict(rf_fit_full, new_data = api_data, type = "class")
+  predict_prob  <- predict(rf_fit_full, new_data = api_data, type = "prob")
+  
+  # Return as a simple tibble (plumber will convert to JSON)
+  tibble(
+    pred = predict_class$.pred_class,
+    prob_No  = predict_prob$.pred_No,
+    prob_Yes = predict_prob$.pred_Yes
+  )
+
+# Example calls
+## library(httr)
+## GET("http://127.0.0.1:8000/pred")
+## GET("http://127.0.0.1:8000/pred", query = list(bmi = 28, age = 56))
+## GET("http://127.0.0.1:8000/pred", 
+##  query = list(bmi = 28, age = 47, high_bp = "No", high_chol = "Yes", 
+##    phys_activity = "Yes", smoker = "No"))
+# ------------------------------------------------------------
+
