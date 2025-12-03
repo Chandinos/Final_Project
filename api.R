@@ -10,6 +10,7 @@ library(janitor)
 library(plumber)
 library(ggplot2)
 
+
 set.seed(987)
 
 # ------------------------------------------------------------
@@ -137,3 +138,54 @@ function(
 ##     smoker = "No"
 # ------------------------------------------------------------
 
+# --------------------
+# Information endpoint
+# --------------------
+#* @get /info
+#* @description Returns my name and project website
+
+function() {
+  list(
+    author = "Chandler Weedon",
+    github_url = "https://chandinos.github.io/Final_Project/EDA.html"
+  )
+}
+
+# --------------------
+# Confusion Matrix Endpoint
+# --------------------
+#* @description Confusion matrix heatmap for the random forest model
+#* @get /confusion
+#* @serializer png
+function()  {
+  
+  # Predict on full data
+  preds <- predict(rf_fit_full, new_data = diabetes, type = "class") |> pull(.pred_class)
+  
+  # Build confusion matrix data frame
+  cm_df <- tibble(
+    Actual = as.character(diabetes$diabetes_binary),
+    Predicted = as.character(preds)
+  ) |> count(Actual, Predicted, name = "Count")
+  
+  # Coerce to factors with correct ordering
+  cm_df <- cm_df |> 
+    mutate(
+      Actual = factor(Actual, levels = unique(Actual)),
+      Predicted = factor(Predicted, levels = unique(Predicted))
+    )
+  
+  # Plot confusion matrix
+  cmatrix <- ggplot(cm_df, aes(x = Predicted, y = Actual, fill = Count)) +
+    geom_tile() +
+    geom_text(aes(label = Count), size = 5, fontface = "bold") +
+    scale_fill_gradient(low = "white", high = "blue") +
+    labs(
+      title = "Confusion Matrix (Random Forest, full data)",
+      x = "Predicted Diabetes Status",
+      y = "Actual Diabetes Status"
+    ) +
+    theme_minimal()
+  
+  print(cmatrix)
+}
