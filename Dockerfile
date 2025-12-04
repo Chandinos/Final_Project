@@ -8,7 +8,7 @@ RUN apt-get update -qq && apt-get install -y \
     pandoc \
     && apt-get clean
 
-RUN R -e "install.packages(c('tidyverse', 'tidymodels', 'janitor', 'ggplot2'))"
+RUN R -e "install.packages(c('tidyverse', 'ranger','tidymodels', 'janitor', 'ggplot2'))"
 
 COPY api.R api.R
 COPY data data
