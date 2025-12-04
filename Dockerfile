@@ -8,9 +8,7 @@ RUN apt-get update -qq && apt-get install -y \
     pandoc \
     && apt-get clean
 
-# Install ranger with dependencies so tidymodels/parsnip sees it
-RUN R -e "install.packages('ranger', repos='https://cloud.r-project.org', dependencies=TRUE)"
-RUN R -e "install.packages(c('tidyverse','tidymodels', 'janitor', 'ggplot2'), repos='https://cloud.r-project.org')"
+RUN R -e "install.packages(c('tidyverse','ranger', 'tidymodels', 'janitor', 'ggplot2'))""
 
 COPY api.R api.R
 COPY data data
